@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import numpy_financial as npf
 
 st.set_page_config(layout="wide")
 st.title("🏦 Treasury Bond Risk & Yield Shock Engine")
@@ -267,6 +268,29 @@ if uploaded_file is not None:
             "bond_risk_report.csv",
             "text/csv"
         )
+
+        # ==========================================================
+        # USER INPUT FOR NEW YIELD
+        # ==========================================================
+
+        new_yield = st.number_input("Enter new yield (YTM) to calculate impact:", min_value=0.0, max_value=100.0, value=9.75, step=0.01)
+
+        # Calculate new gain/loss for each bond
+        df["New Gain/Loss"] = df.apply(
+            lambda row: calculate_gain_loss(
+                selling_date=datetime.strptime(row["Selling Date"], "%d-%b-%y"),
+                maturity_date=datetime.strptime(row["Maturity Date"], "%d-%b-%y"),
+                coupon_rate=row["Coupon"],
+                selling_yield=new_yield,
+                face_value=row["Face Value"],
+                book_value=row["Book Value"]
+            ),
+            axis=1
+        )
+
+        # Display updated table
+        st.write("Updated Portfolio with New Gain/Loss:")
+        st.dataframe(df)
 
 else:
     st.info("Upload a portfolio file to begin analysis.")
