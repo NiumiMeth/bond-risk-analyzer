@@ -104,29 +104,7 @@ portfolio/
 
 ---
 
-## How to Contribute
-
-1. Fork the repository.
-2. Create a new branch for your feature or bug fix:
-   ```bash
-   git checkout -b feature-name
-   ```
-3. Commit your changes:
-   ```bash
-   git commit -m "Description of changes"
-   ```
-4. Push to your branch:
-   ```bash
-   git push origin feature-name
-   ```
-5. Open a pull request.
-
----
-
 ## License
 This project is licensed under the MIT License. See the LICENSE file for details.
 
 ---
-
-## Contact
-For any questions or feedback, please contact [Your Name/Email].
