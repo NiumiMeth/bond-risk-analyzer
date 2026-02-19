@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import numpy_financial as npf
 
 st.set_page_config(layout="wide")
 st.title("🏦 Treasury Bond Risk & Yield Shock Engine")
@@ -25,7 +24,6 @@ if uploaded_file is not None:
             df_raw = pd.read_csv(uploaded_file)
         else:  # Excel
             df_raw = pd.read_excel(uploaded_file)
-
 
         # ==========================================================
         # FLEXIBLE COLUMN MAPPING
@@ -51,51 +49,25 @@ if uploaded_file is not None:
         existing_cols = [v for v in canonical_columns.values() if v in df_raw.columns]
         df = df_raw[existing_cols].copy()
 
-        if "Maturity Value" not in df.columns or "Coupon" not in df.columns or "YTM" not in df.columns:
-            st.error("Uploaded file is missing required columns: 'Maturity Value', 'Coupon', or 'YTM'. Please check your file.")
+        # Check essential columns
+        essential = ["ISIN", "Maturity Date", "Coupon", "Maturity Value", "YTM"]
+        missing = [c for c in essential if c not in df.columns]
+        if missing:
+            st.error(f"Uploaded file is missing required columns: {', '.join(missing)}")
             st.stop()
 
         # ==========================================================
-        # CLEANING & STANDARDIZATION
+        # DATA CLEANING
         # ==========================================================
 
-        required_columns = [
-            "ISIN",
-            "Initial Inv Date",
-            "Maturity Date",
-            "Coupon",
-            "Maturity Value",
-            "YTM"
-        ]
-
-        df = df[required_columns].copy()
-        df = df[df["ISIN"].notna()]
-
-        # Clean Maturity Value
-        df["Maturity Value"] = (
-            df["Maturity Value"]
-            .astype(str)
-            .str.replace(",", "")
-            .str.strip()
-        )
-        df["Maturity Value"] = pd.to_numeric(df["Maturity Value"], errors="coerce")
-
-        # Clean Coupon
-        df["Coupon"] = (
-            df["Coupon"]
-            .astype(str)
-            .str.replace("%", "")
-            .str.strip()
-        )
-        df["Coupon"] = pd.to_numeric(df["Coupon"], errors="coerce") / 100
-
-        # Clean YTM
+        # Clean numeric columns
+        df["Maturity Value"] = pd.to_numeric(df["Maturity Value"].astype(str).str.replace(",", ""), errors="coerce")
+        df["Coupon"] = pd.to_numeric(df["Coupon"].astype(str).str.replace("%", ""), errors="coerce") / 100
         df["YTM"] = pd.to_numeric(df["YTM"], errors="coerce") / 100
 
-        # Convert Dates
+        # Convert dates
         df["Maturity Date"] = pd.to_datetime(df["Maturity Date"], errors="coerce")
-
-        df = df.dropna(subset=["Maturity Value", "Coupon", "YTM", "Maturity Date"])
+        df = df.dropna(subset=essential)
 
         today = datetime.today()
         df["Years_to_Maturity"] = (df["Maturity Date"] - today).dt.days / 365
@@ -109,87 +81,44 @@ if uploaded_file is not None:
             coupon = face * coupon_rate
             periods = int(np.ceil(years))
             price = 0
-
             for t in range(1, periods + 1):
                 price += coupon / ((1 + ytm) ** t)
-
             price += face / ((1 + ytm) ** periods)
             return price
-
 
         def macaulay_duration(face, coupon_rate, ytm, years):
             coupon = face * coupon_rate
             periods = int(np.ceil(years))
             price = bond_price(face, coupon_rate, ytm, years)
-
             weighted_sum = 0
-
             for t in range(1, periods + 1):
                 cashflow = coupon
                 if t == periods:
                     cashflow += face
-
                 weighted_sum += t * cashflow / ((1 + ytm) ** t)
-
             return weighted_sum / price
-
 
         def convexity(face, coupon_rate, ytm, years):
             coupon = face * coupon_rate
             periods = int(np.ceil(years))
             price = bond_price(face, coupon_rate, ytm, years)
-
-            convex_sum = 0
-
+            conv_sum = 0
             for t in range(1, periods + 1):
                 cashflow = coupon
                 if t == periods:
                     cashflow += face
-
-                convex_sum += cashflow * t * (t + 1) / ((1 + ytm) ** (t + 2))
-
-            return convex_sum / price
+                conv_sum += cashflow * t * (t + 1) / ((1 + ytm) ** (t + 2))
+            return conv_sum / price
 
         # ==========================================================
         # CALCULATIONS
         # ==========================================================
 
-        prices = []
-        durations = []
-        convexities = []
-
-        for _, row in df.iterrows():
-
-            price = bond_price(
-                row["Maturity Value"],
-                row["Coupon"],
-                row["YTM"],
-                row["Years_to_Maturity"]
-            )
-
-            dur = macaulay_duration(
-                row["Maturity Value"],
-                row["Coupon"],
-                row["YTM"],
-                row["Years_to_Maturity"]
-            )
-
-            conv = convexity(
-                row["Maturity Value"],
-                row["Coupon"],
-                row["YTM"],
-                row["Years_to_Maturity"]
-            )
-
-            prices.append(price)
-            durations.append(dur)
-            convexities.append(conv)
-
-        df["Price"] = prices
+        df["Price"] = df.apply(lambda row: bond_price(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years_to_Maturity"]), axis=1)
         df["Market Value"] = df["Price"]
-        df["Macaulay Duration"] = durations
+        df["Macaulay Duration"] = df.apply(lambda row: macaulay_duration(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years_to_Maturity"]), axis=1)
         df["Modified Duration"] = df["Macaulay Duration"] / (1 + df["YTM"])
-        df["Convexity"] = convexities
+        df["Convexity"] = df.apply(lambda row: convexity(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years_to_Maturity"]), axis=1)
         df["DV01"] = df["Modified Duration"] * df["Market Value"] * 0.0001
 
         # ==========================================================
@@ -199,21 +128,8 @@ if uploaded_file is not None:
         st.sidebar.header("Yield Shock Settings")
         shock_bps = st.sidebar.slider("Parallel Yield Shock (bps)", -500, 500, 100)
         shock = shock_bps / 10000
-
         df["New_YTM"] = df["YTM"] + shock
-
-        new_prices = []
-
-        for _, row in df.iterrows():
-            new_price = bond_price(
-                row["Maturity Value"],
-                row["Coupon"],
-                row["New_YTM"],
-                row["Years_to_Maturity"]
-            )
-            new_prices.append(new_price)
-
-        df["New Price"] = new_prices
+        df["New Price"] = df.apply(lambda row: bond_price(row["Maturity Value"], row["Coupon"], row["New_YTM"], row["Years_to_Maturity"]), axis=1)
         df["Price Change"] = df["New Price"] - df["Price"]
         df["P/L Impact"] = df["Price Change"]
 
@@ -227,7 +143,6 @@ if uploaded_file is not None:
         total_dv01 = df["DV01"].sum()
 
         col1, col2, col3, col4 = st.columns(4)
-
         col1.metric("Total Market Value", f"{total_mv:,.2f}")
         col2.metric("Total P/L Impact", f"{total_pl:,.2f}")
         col3.metric("Weighted Duration", f"{weighted_duration:.2f}")
@@ -238,16 +153,7 @@ if uploaded_file is not None:
         # ==========================================================
 
         st.subheader("🔎 ISINs Affected by Yield Shock")
-
-        affected = df[[
-            "ISIN",
-            "Market Value",
-            "Modified Duration",
-            "DV01",
-            "Price Change",
-            "P/L Impact"
-        ]].sort_values("P/L Impact")
-
+        affected = df[["ISIN","Market Value","Modified Duration","DV01","Price Change","P/L Impact"]].sort_values("P/L Impact")
         st.dataframe(affected, use_container_width=True)
 
         # ==========================================================
@@ -262,35 +168,7 @@ if uploaded_file is not None:
         # ==========================================================
 
         csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "📥 Download Risk Report",
-            csv,
-            "bond_risk_report.csv",
-            "text/csv"
-        )
-
-        # ==========================================================
-        # USER INPUT FOR NEW YIELD
-        # ==========================================================
-
-        new_yield = st.number_input("Enter new yield (YTM) to calculate impact:", min_value=0.0, max_value=100.0, value=9.75, step=0.01)
-
-        # Calculate new gain/loss for each bond
-        df["New Gain/Loss"] = df.apply(
-            lambda row: calculate_gain_loss(
-                selling_date=datetime.strptime(row["Selling Date"], "%d-%b-%y"),
-                maturity_date=datetime.strptime(row["Maturity Date"], "%d-%b-%y"),
-                coupon_rate=row["Coupon"],
-                selling_yield=new_yield,
-                face_value=row["Face Value"],
-                book_value=row["Book Value"]
-            ),
-            axis=1
-        )
-
-        # Display updated table
-        st.write("Updated Portfolio with New Gain/Loss:")
-        st.dataframe(df)
+        st.download_button("📥 Download Risk Report", csv, "bond_risk_report.csv", "text/csv")
 
 else:
     st.info("Upload a portfolio file to begin analysis.")
