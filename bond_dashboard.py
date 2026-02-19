@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import plotly.graph_objects as go
 
 # ==================== PAGE SETUP ====================
 st.set_page_config(layout="wide", page_title="Treasury Bond Risk Dashboard")
@@ -55,6 +56,9 @@ if uploaded_file is not None:
         df["Years_to_Maturity"] = (df["Maturity Date"] - today).dt.days / 365
         df = df[df["Years_to_Maturity"] > 0]
 
+        # Ensure 'Years to Maturity' column exists
+        df.rename(columns={"Years_to_Maturity": "Years to Maturity"}, inplace=True)
+
         # ==================== BOND PRICING FUNCTIONS ====================
         def bond_price(face, coupon_rate, ytm, years):
             coupon = face * coupon_rate
@@ -78,11 +82,11 @@ if uploaded_file is not None:
             return conv_sum / price
 
         # ==================== BASE CALCULATIONS ====================
-        df["Price"] = df.apply(lambda row: bond_price(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years_to_Maturity"]), axis=1)
+        df["Price"] = df.apply(lambda row: bond_price(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years to Maturity"]), axis=1)
         df["Market Value"] = df["Price"]
-        df["Macaulay Duration"] = df.apply(lambda row: macaulay_duration(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years_to_Maturity"]), axis=1)
+        df["Macaulay Duration"] = df.apply(lambda row: macaulay_duration(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years to Maturity"]), axis=1)
         df["Modified Duration"] = df["Macaulay Duration"] / (1 + df["YTM"])
-        df["Convexity"] = df.apply(lambda row: convexity(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years_to_Maturity"]), axis=1)
+        df["Convexity"] = df.apply(lambda row: convexity(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years to Maturity"]), axis=1)
         df["DV01"] = df["Modified Duration"] * df["Market Value"] * 0.0001
 
         # ==================== YIELD SHOCK ====================
@@ -91,7 +95,7 @@ if uploaded_file is not None:
         shock = shock_bps / 10000  # convert bps to decimal
 
         df["New_YTM"] = df["YTM"] + shock
-        df["New Price"] = df.apply(lambda row: bond_price(row["Maturity Value"], row["Coupon"], row["New_YTM"], row["Years_to_Maturity"]), axis=1)
+        df["New Price"] = df.apply(lambda row: bond_price(row["Maturity Value"], row["Coupon"], row["New_YTM"], row["Years to Maturity"]), axis=1)
         df["Price Change"] = df["New Price"] - df["Price"]
         df["P/L Impact"] = df["Price Change"]
 
@@ -123,6 +127,40 @@ if uploaded_file is not None:
         # ==================== DOWNLOAD ====================
         csv = df.to_csv(index=False).encode("utf-8")
         st.download_button("📥 Download Risk Report", csv, "bond_risk_report.csv", "text/csv")
+
+        # Add a new page for the yield curve visualization
+        if st.sidebar.button("Go to Yield Curve Page"):
+            st.title("Yield Curve Visualization")
+
+            # Yield curve plot
+            fig_yield = go.Figure()
+
+            # Original yield curve
+            fig_yield.add_trace(go.Scatter(
+                x=df["Years to Maturity"],
+                y=df["YTM"] * 100,  # Convert to percentage
+                mode='lines+markers',
+                name='Original YTM',
+                line=dict(color='blue', width=2)
+            ))
+
+            # Shocked yield curve
+            fig_yield.add_trace(go.Scatter(
+                x=df["Years to Maturity"],
+                y=df["New_YTM"] * 100,  # Convert to percentage
+                mode='lines+markers',
+                name=f'YTM after {shock_bps} bps shock',
+                line=dict(color='red', width=2, dash='dash')
+            ))
+
+            fig_yield.update_layout(
+                title='Yield Curve',
+                xaxis_title='Years to Maturity',
+                yaxis_title='Yield (%)',
+                template='plotly_white'
+            )
+
+            st.plotly_chart(fig_yield, use_container_width=True)
 
 else:
     st.info("Upload a portfolio file to begin analysis.")
