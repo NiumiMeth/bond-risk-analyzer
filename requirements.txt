@@ -1,0 +1,5 @@
+# requirements.txt for Bond MTM Dashboard
+streamlit
+pandas
+numpy
+plotly
