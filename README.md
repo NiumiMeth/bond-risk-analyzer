@@ -108,3 +108,102 @@ portfolio/
 This project is licensed under the MIT License. See the LICENSE file for details.
 
 ---
+
+Yes — **you *can* find finance‑related datasets on Kaggle**, but **pure Treasury bond transaction data (with investor records + buys over time)** isn’t very common there. Most Kaggle financial datasets are about *market rates, credit card spending, fraud detection, or stock prices*, which are useful but may not *exactly match* your DW‑BI internship topic unless you adapt them.([Baselight][1])
+
+Here’s what you *can* find on Kaggle and how you might use it:
+
+### 📌 1. **Daily Treasury Real Yield Curve Rates**
+
+* Contains historical daily yield rates for different maturities (5y, 7y, 10y, etc.).
+* Not transactional (no investor or purchase table), but useful if you want **bond performance trends over time**.([Baselight][2])
+* *Use case:* You could **combine this with synthetic transaction data** to simulate buys based on real yield rates — perfect for DW.
+
+🔗 Example dataset: “Daily Treasury Real Yield Curve Rates” on Kaggle
+
+---
+
+### 📌 2. **Personal Budget / Spending Transaction Data**
+
+* Has individual financial transactions (amounts, dates, categories).
+* While not bond data, this *is* OLTP transactional data with time series.([Baselight][1])
+* *Use case:* You could **adapt the structure** to simulate Treasury transactions (e.g., treat categories as bond types).
+
+---
+
+### 📌 3. **Credit Card Transactions Dataset**
+
+* Contains detailed transaction records (millions of rows) with amounts, dates, and more.
+* Very useful for OLTP modelling.([Baselight][3])
+* *Use case:* You could use its structure (transactions per customer) as a **template** and adapt it to invest/bond transactions.
+
+---
+
+### ❌ What *isn’t* readily available
+
+* **Direct Kaggle dataset of investor bond purchases** (e.g., individual buys of government bonds with investor IDs) *is not commonly published.*
+* Most financial Kaggle data is **market data (rates, stock prices)** or **credit card transaction logs**, not direct Treasury purchase logs.
+
+---
+
+## ✅ What You *Can* Do for Your Assignment
+
+### **Option A — Use a Related Kaggle Dataset + Transform It**
+
+You could take a **credit card transactions dataset** and:
+
+1. Rename fields to bond transactions (e.g., user → investor, amount → total value, category → bond type).
+2. Add tables for **Investors** and **Bonds**.
+3. Generate synthetic Bond transactions over 1+ years.
+
+This satisfies the OLTP dataset requirement because it becomes:
+
+* Raw transactional data
+* 1‑to‑many relationships
+* Enough richness for DW modelling
+
+💡 This is a valid solution because you’re *transforming* an OLTP-like dataset into your bond/treasury scenario.
+
+---
+
+### **Option B — Use Real Financial Time Series + Generate Synthetic Transactions**
+
+Take a yield curve dataset (e.g., Treasury rates), then:
+
+1. Create synthetic investors.
+2. Create synthetic bond purchase logs based on real yields over time.
+3. Build investor/bond tables and transaction table.
+
+This gives you:
+
+* Real **market context**
+* Synthetic but consistent transactional dataset
+* DW readiness (fact + dimensions)
+
+---
+
+## Quick Examples of Kaggle Financial Datasets You *Can Explore*
+
+| Dataset                                   | Description                               | Potential Use                                       |
+| ----------------------------------------- | ----------------------------------------- | --------------------------------------------------- |
+| **Daily Treasury Real Yield Curve Rates** | Historical yields for Treasury securities | Base for generating bond pricing & yield attributes |
+| **Personal Budget Transactions**          | Financial transactions                    | Template structure for transactional modelling      |
+| **Credit Card Transactions**              | Millions of transaction records           | Strong OLTP example to adapt/bend to your scenario  |
+
+---
+
+## Summary
+
+✅ **Yes, Kaggle has finance datasets** that you can adapt for your DW assignment.
+❗ But **a ready‑made Treasury bond transaction dataset with investor data does *not* currently exist on Kaggle**.
+➡️ You’ll likely need to **transform/adapt** a related Kaggle finance dataset into your Treasury OLTP structure, or generate synthetic transactions on top of real market data.([Baselight][2])
+
+---
+
+If you want, I can **find 2–3 specific Kaggle dataset links with direct URLs** that *best match* your Treasury scenario (and tell you exactly how to adapt each one).
+
+Would you like direct download links next?
+
+[1]: https://baselight.app/u/kaggle/dataset/ismetsemedov_personal_budget_transactions_dataset?utm_source=chatgpt.com "Personal Budget Transactions Dataset by Kaggle | Finance and Economics | Baselight"
+[2]: https://baselight.app/u/kaggle/dataset/odezi45_daily_treasury_real_yield_curve_rates?utm_source=chatgpt.com "Daily Treasury Real Yield Curve Rates by Kaggle | Finance and Economics | Baselight"
+[3]: https://baselight.app/u/kaggle/dataset/priyamchoksi_credit_card_transactions_dataset?utm_source=chatgpt.com "Credit Card Transactions Dataset by Kaggle | Finance and Economics Data | Baselight"
