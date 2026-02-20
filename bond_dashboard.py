@@ -52,60 +52,72 @@ if uploaded_file is not None:
         df["Maturity Date"] = pd.to_datetime(df["Maturity Date"], errors="coerce")
         df = df.dropna(subset=essential)
 
-        # ==================== SPOT DATE INPUT ====================
+        # ==================== SPOT DATE ====================
         spot_date = st.date_input("Spot / Settlement Date", value=datetime.today())
         spot_date = pd.to_datetime(spot_date)
-
-        # Update Years to Maturity calculation to use spot date
-        df["Years_to_Maturity"] = (df["Maturity Date"] - spot_date).dt.days / 365
-        df = df[df["Years_to_Maturity"] > 0]
-
-        # Ensure 'Years to Maturity' column exists
-        df.rename(columns={"Years_to_Maturity": "Years to Maturity"}, inplace=True)
+        df["Years to Maturity"] = (df["Maturity Date"] - spot_date).dt.days / 365
+        df = df[df["Years to Maturity"] > 0]
 
         # ==================== BOND PRICING FUNCTIONS ====================
-        def bond_price(face, coupon_rate, ytm, years):
-            coupon = face * coupon_rate
-            periods = int(np.ceil(years))
-            price = sum([coupon / ((1 + ytm) ** t) for t in range(1, periods + 1)])
-            price += face / ((1 + ytm) ** periods)
+        def bond_price(face, coupon_rate, ytm, years, freq=2):
+            """Semi-annual pricing with fractional periods"""
+            periods = years * freq
+            coupon = face * coupon_rate / freq
+            price = sum([coupon / ((1 + ytm/freq) ** t) for t in range(1, int(np.floor(periods)) + 1)])
+            fractional = periods - int(np.floor(periods))
+            if fractional > 0:
+                price += (coupon + face) / ((1 + ytm/freq) ** (periods))
+            else:
+                price += face / ((1 + ytm/freq) ** int(periods))
             return price
 
-        def macaulay_duration(face, coupon_rate, ytm, years):
-            coupon = face * coupon_rate
-            periods = int(np.ceil(years))
-            price = bond_price(face, coupon_rate, ytm, years)
-            weighted_sum = sum([t * (coupon + (face if t == periods else 0)) / ((1 + ytm) ** t) for t in range(1, periods + 1)])
+        def macaulay_duration(face, coupon_rate, ytm, years, freq=2):
+            periods = years * freq
+            coupon = face * coupon_rate / freq
+            price = bond_price(face, coupon_rate, ytm, years, freq)
+            weighted_sum = sum([t * coupon / ((1 + ytm/freq) ** t) for t in range(1, int(np.floor(periods)) + 1)])
+            weighted_sum += int(periods) * (coupon + face) / ((1 + ytm/freq) ** int(periods))
             return weighted_sum / price
 
-        def convexity(face, coupon_rate, ytm, years):
-            coupon = face * coupon_rate
-            periods = int(np.ceil(years))
-            price = bond_price(face, coupon_rate, ytm, years)
-            conv_sum = sum([(coupon + (face if t == periods else 0)) * t * (t + 1) / ((1 + ytm) ** (t + 2)) for t in range(1, periods + 1)])
+        def modified_duration(face, coupon_rate, ytm, years, freq=2):
+            return macaulay_duration(face, coupon_rate, ytm, years, freq) / (1 + ytm/freq)
+
+        def convexity(face, coupon_rate, ytm, years, freq=2):
+            periods = years * freq
+            coupon = face * coupon_rate / freq
+            price = bond_price(face, coupon_rate, ytm, years, freq)
+            conv_sum = sum([(t * (t + 1)) * coupon / ((1 + ytm/freq) ** (t + 2)) for t in range(1, int(np.floor(periods)) + 1)])
+            conv_sum += (int(periods) * (int(periods) + 1)) * (coupon + face) / ((1 + ytm/freq) ** (int(periods) + 2))
             return conv_sum / price
 
         # ==================== BASE CALCULATIONS ====================
         df["Price"] = df.apply(lambda row: bond_price(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years to Maturity"]), axis=1)
-        df["Market Value"] = df["Price"]
+        df["Market Value"] = df["Price"]  # no Quantity
         df["Macaulay Duration"] = df.apply(lambda row: macaulay_duration(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years to Maturity"]), axis=1)
-        df["Modified Duration"] = df["Macaulay Duration"] / (1 + df["YTM"])
+        df["Modified Duration"] = df.apply(lambda row: modified_duration(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years to Maturity"]), axis=1)
         df["Convexity"] = df.apply(lambda row: convexity(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years to Maturity"]), axis=1)
         df["DV01"] = df["Modified Duration"] * df["Market Value"] * 0.0001
 
         # ==================== YIELD SHOCK ====================
         st.sidebar.header("Yield Shock Settings")
-        shock_bps = st.sidebar.slider("Parallel Yield Shock (bps)", -500, 500, 100, step=10)
-        shock = shock_bps / 10000  # convert bps to decimal
+        # Numeric input for % shock
+        shock_pct = st.sidebar.number_input("Parallel Yield Shock (%)", value=0.0, step=0.1)
+        shock = shock_pct / 100
 
         df["New_YTM"] = df["YTM"] + shock
         df["New Price"] = df.apply(lambda row: bond_price(row["Maturity Value"], row["Coupon"], row["New_YTM"], row["Years to Maturity"]), axis=1)
         df["Price Change"] = df["New Price"] - df["Price"]
-        df["P/L Impact"] = df["Price Change"]
+        df["P/L Impact"] = df["Price Change"]  # no Quantity
+
+        # Duration-based approximation
+        df["Duration Approx P/L"] = -df["Modified Duration"] * df["Market Value"] * shock
+
+        # Contribution to P/L
+        total_pl = df["P/L Impact"].sum()
+        df["% Contribution to P/L"] = df["P/L Impact"] / total_pl * 100 if total_pl != 0 else 0
 
         # ==================== PORTFOLIO METRICS ====================
         total_mv = df["Market Value"].sum()
-        total_pl = df["P/L Impact"].sum()
         weighted_duration = (df["Modified Duration"] * df["Market Value"]).sum() / total_mv
         total_dv01 = df["DV01"].sum()
 
@@ -117,11 +129,10 @@ if uploaded_file is not None:
 
         # ==================== AFFECTED ISINS ====================
         st.subheader("🔎 ISINs Affected by Yield Shock")
-        # Color coding for gains/losses
+        affected = df[["ISIN","Market Value","Modified Duration","DV01","Price Change","P/L Impact","% Contribution to P/L","Duration Approx P/L"]].sort_values("P/L Impact", ascending=True)
         def color_price(val):
             color = 'green' if val >= 0 else 'red'
             return f'color: {color}'
-        affected = df[["ISIN","Market Value","Modified Duration","DV01","Price Change","P/L Impact"]].sort_values("P/L Impact", ascending=True)
         st.dataframe(affected.style.applymap(color_price, subset=["Price Change","P/L Impact"]), use_container_width=True)
 
         # ==================== FULL PORTFOLIO VIEW ====================
@@ -132,39 +143,36 @@ if uploaded_file is not None:
         csv = df.to_csv(index=False).encode("utf-8")
         st.download_button("📥 Download Risk Report", csv, "bond_risk_report.csv", "text/csv")
 
-        # Add a new page for the yield curve visualization
-        if st.sidebar.button("Go to Yield Curve Page"):
-            st.title("Yield Curve Visualization")
+        # ==================== YIELD CURVE VISUALIZATION ====================
+        st.subheader("📈 Yield Curve Visualization")
+        fig_yield = go.Figure()
 
-            # Yield curve plot
-            fig_yield = go.Figure()
+        # Original yield curve
+        fig_yield.add_trace(go.Scatter(
+            x=df["Years to Maturity"],
+            y=df["YTM"] * 100,
+            mode='lines+markers',
+            name='Original YTM',
+            line=dict(color='blue', width=2)
+        ))
 
-            # Original yield curve
-            fig_yield.add_trace(go.Scatter(
-                x=df["Years to Maturity"],
-                y=df["YTM"] * 100,  # Convert to percentage
-                mode='lines+markers',
-                name='Original YTM',
-                line=dict(color='blue', width=2)
-            ))
+        # Shocked yield curve
+        fig_yield.add_trace(go.Scatter(
+            x=df["Years to Maturity"],
+            y=df["New_YTM"] * 100,
+            mode='lines+markers',
+            name=f'YTM after {shock_pct:.2f}% shock',
+            line=dict(color='red', width=2, dash='dash')
+        ))
 
-            # Shocked yield curve
-            fig_yield.add_trace(go.Scatter(
-                x=df["Years to Maturity"],
-                y=df["New_YTM"] * 100,  # Convert to percentage
-                mode='lines+markers',
-                name=f'YTM after {shock_bps} bps shock',
-                line=dict(color='red', width=2, dash='dash')
-            ))
+        fig_yield.update_layout(
+            title='Yield Curve',
+            xaxis_title='Years to Maturity',
+            yaxis_title='Yield (%)',
+            template='plotly_white'
+        )
 
-            fig_yield.update_layout(
-                title='Yield Curve',
-                xaxis_title='Years to Maturity',
-                yaxis_title='Yield (%)',
-                template='plotly_white'
-            )
-
-            st.plotly_chart(fig_yield, use_container_width=True)
+        st.plotly_chart(fig_yield, use_container_width=True)
 
 else:
     st.info("Upload a portfolio file to begin analysis.")
