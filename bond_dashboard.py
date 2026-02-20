@@ -52,8 +52,12 @@ if uploaded_file is not None:
         df["Maturity Date"] = pd.to_datetime(df["Maturity Date"], errors="coerce")
         df = df.dropna(subset=essential)
 
-        today = datetime.today()
-        df["Years_to_Maturity"] = (df["Maturity Date"] - today).dt.days / 365
+        # ==================== SPOT DATE INPUT ====================
+        spot_date = st.date_input("Spot / Settlement Date", value=datetime.today())
+        spot_date = pd.to_datetime(spot_date)
+
+        # Update Years to Maturity calculation to use spot date
+        df["Years_to_Maturity"] = (df["Maturity Date"] - spot_date).dt.days / 365
         df = df[df["Years_to_Maturity"] > 0]
 
         # Ensure 'Years to Maturity' column exists
