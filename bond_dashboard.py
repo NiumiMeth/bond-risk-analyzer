@@ -116,6 +116,76 @@ if uploaded_file is not None:
         total_pl = df["P/L Impact"].sum()
         df["% Contribution to P/L"] = df["P/L Impact"] / total_pl * 100 if total_pl != 0 else 0
 
+        # ==================== ISIN-SPECIFIC YIELD SHOCK ====================
+        st.sidebar.header("ISIN-Specific Yield Shock Settings")
+
+        # Get unique ISINs
+        unique_isins = df["ISIN"].unique()
+
+        # Create a dictionary to store ISIN-specific shocks
+        isin_shocks = {}
+        for isin in unique_isins:
+            isin_shocks[isin] = st.sidebar.number_input(f"Yield Shock for ISIN {isin} (%)", value=0.0, step=0.1)
+
+        # Apply ISIN-specific shocks
+        def apply_isin_shock(row):
+            isin = row["ISIN"]
+            specific_shock = isin_shocks.get(isin, 0.0) / 100  # Convert to decimal
+            return row["YTM"] + specific_shock
+
+        df["ISIN_Specific_YTM"] = df.apply(apply_isin_shock, axis=1)
+        df["ISIN_Specific_Price"] = df.apply(lambda row: bond_price(row["Maturity Value"], row["Coupon"], row["ISIN_Specific_YTM"], row["Years to Maturity"]), axis=1)
+        df["ISIN_Specific_Price Change"] = df["ISIN_Specific_Price"] - df["Price"]
+        df["ISIN_Specific_P/L Impact"] = df["ISIN_Specific_Price Change"]  # no Quantity
+
+        # Add Maturity Date to ISIN-Specific DataFrame
+        df["ISIN_Specific_Maturity Date"] = df["Maturity Date"]
+
+        # Extend ISIN-Specific DataFrame with additional columns from Full Portfolio Risk Table
+        df["ISIN_Specific_Market Value"] = df["Market Value"]
+        df["ISIN_Specific_Modified Duration"] = df["Modified Duration"]
+        df["ISIN_Specific_DV01"] = df["DV01"]
+        df["ISIN_Specific_% Contribution to P/L"] = df["ISIN_Specific_P/L Impact"] / total_pl * 100 if total_pl != 0 else 0
+        df["ISIN_Specific_Duration Approx P/L"] = -df["ISIN_Specific_Modified Duration"] * df["ISIN_Specific_Market Value"] * shock
+
+        # Debugging: Log ISIN-specific shocks and recalculated prices
+        st.write("ISIN-Specific Shocks:", isin_shocks)
+        st.write("Updated DataFrame with ISIN-Specific YTM, Prices, and Maturity Date:")
+        st.dataframe(df[["ISIN", "YTM", "ISIN_Specific_YTM", "Price", "ISIN_Specific_Price", "ISIN_Specific_Price Change", 
+            "ISIN_Specific_Market Value", "ISIN_Specific_Modified Duration", "ISIN_Specific_DV01", 
+            "ISIN_Specific_% Contribution to P/L", "ISIN_Specific_Duration Approx P/L", "ISIN_Specific_Maturity Date"]])
+
+        # Add ISIN-specific yield curve visualization
+        st.subheader("📈 ISIN-Specific Yield Curve Visualization")
+        fig_isin_yield = go.Figure()
+
+        # Original yield curve
+        fig_isin_yield.add_trace(go.Scatter(
+            x=df["Years to Maturity"],
+            y=df["YTM"] * 100,
+            mode='lines+markers',
+            name='Original YTM',
+            line=dict(color='blue', width=2)
+        ))
+
+        # ISIN-specific shocked yield curve
+        fig_isin_yield.add_trace(go.Scatter(
+            x=df["Years to Maturity"],
+            y=df["ISIN_Specific_YTM"] * 100,
+            mode='lines+markers',
+            name='ISIN-Specific YTM',
+            line=dict(color='green', width=2, dash='dot')
+        ))
+
+        fig_isin_yield.update_layout(
+            title='ISIN-Specific Yield Curve',
+            xaxis_title='Years to Maturity',
+            yaxis_title='Yield (%)',
+            template='plotly_white'
+        )
+
+        st.plotly_chart(fig_isin_yield, use_container_width=True)
+
         # ==================== PORTFOLIO METRICS ====================
         total_mv = df["Market Value"].sum()
         weighted_duration = (df["Modified Duration"] * df["Market Value"]).sum() / total_mv
