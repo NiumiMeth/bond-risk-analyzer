@@ -15,8 +15,8 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-    with st.spinner("Processing portfolio..."):
 
+    with st.spinner("Processing portfolio..."):
         # Load file
         if uploaded_file.name.endswith(".csv"):
             df_raw = pd.read_csv(uploaded_file)
@@ -32,8 +32,6 @@ if uploaded_file is not None:
             "maturity value": "Maturity Value",
             "ytm": "YTM"
         }
-
-        # Clean headers
         df_raw.columns = [str(col).strip().lower() for col in df_raw.columns]
         df_raw.rename(columns=canonical_columns, inplace=True)
         existing_cols = [v for v in canonical_columns.values() if v in df_raw.columns]
@@ -57,6 +55,28 @@ if uploaded_file is not None:
         spot_date = pd.to_datetime(spot_date)
         df["Years to Maturity"] = (df["Maturity Date"] - spot_date).dt.days / 365
         df = df[df["Years to Maturity"] > 0]
+
+        # ==================== ISIN FILTER ====================
+        st.sidebar.markdown("**Filter by ISIN**")
+        isin_options = df["ISIN"].unique().tolist()
+        selected_isins = st.sidebar.multiselect("Select ISINs to view", isin_options, default=isin_options)
+        df = df[df["ISIN"].isin(selected_isins)]
+
+        # ==================== TABS FOR ORGANIZATION ====================
+        tab1, tab2, tab3 = st.tabs(["Portfolio", "Risk Metrics", "Visualizations"])
+
+
+        with tab1:
+            st.subheader("📘 Full Portfolio Table")
+            currency_cols = ["Market Value", "Maturity Value", "Price", "New Price", "ISIN_Specific_Market Value"]
+            df_display = df.copy()
+            for col in currency_cols:
+                if col in df_display.columns:
+                    df_display[col] = df_display[col].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
+            st.dataframe(df_display, use_container_width=True)
+            st.markdown("ℹ️ **Portfolio Table:** Shows all bonds in your portfolio. Use sidebar to filter by ISIN. Currency columns are formatted for readability.")
+
+        # The rest of your calculations and visualizations should be placed inside tab2 and tab3 as shown in the previous message.
 
         # ==================== BOND PRICING FUNCTIONS ====================
         def bond_price(face, coupon_rate, ytm, years, freq=2):
@@ -190,11 +210,12 @@ if uploaded_file is not None:
         # ==================== TOP 5 MOST SENSITIVE ISINS (ISIN-Specific Shock) ====================
         st.subheader("🔥 Top 5 Most Sensitive ISINs (ISIN-Specific Yield Shock)")
         top_isin_specific = df[["ISIN", "ISIN_Specific_P/L Impact", "ISIN_Specific_Price Change", "ISIN_Specific_Market Value", "ISIN_Specific_Modified Duration", "ISIN_Specific_DV01"]].copy()
-        top_isin_specific = top_isin_specific.reindex(top_isin_specific["ISIN_Specific_P/L Impact"].abs().sort_values(ascending=False).index).head(5)
+        for col in ["ISIN_Specific_P/L Impact", "ISIN_Specific_Price Change", "ISIN_Specific_Market Value", "ISIN_Specific_DV01"]:
+            if col in top_isin_specific.columns:
+                top_isin_specific[col] = top_isin_specific[col].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
+        top_isin_specific = top_isin_specific.reindex(top_isin_specific["ISIN_Specific_P/L Impact"].apply(lambda x: float(x.replace(",", "")) if x else 0).abs().sort_values(ascending=False).index).head(5)
         st.table(top_isin_specific)
-
-        st.subheader("Bar Chart: ISIN-Specific P/L Impact for Top 5 ISINs")
-        st.bar_chart(top_isin_specific.set_index("ISIN")["ISIN_Specific_P/L Impact"])
+        st.bar_chart(top_isin_specific.set_index("ISIN")["ISIN_Specific_P/L Impact"].apply(lambda x: float(x.replace(",", "")) if x else 0))
 
         # ==================== PORTFOLIO METRICS ====================
         total_mv = df["Market Value"].sum()
@@ -211,12 +232,12 @@ if uploaded_file is not None:
         # ==================== TOP 5 MOST SENSITIVE ISINS ====================
         st.subheader("🔥 Top 5 Most Sensitive ISINs (by P/L Impact)")
         top_sensitive = df[["ISIN", "Market Value", "Modified Duration", "DV01", "Price Change", "P/L Impact"]].copy()
-        top_sensitive = top_sensitive.reindex(top_sensitive["P/L Impact"].abs().sort_values(ascending=False).index).head(5)
+        for col in ["Market Value", "Price Change", "P/L Impact", "DV01"]:
+            if col in top_sensitive.columns:
+                top_sensitive[col] = top_sensitive[col].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
+        top_sensitive = top_sensitive.reindex(top_sensitive["P/L Impact"].apply(lambda x: float(x.replace(",", "")) if x else 0).abs().sort_values(ascending=False).index).head(5)
         st.table(top_sensitive)
-
-        # Bar chart for visual impact
-        st.subheader("Bar Chart: P/L Impact for Top 5 ISINs")
-        st.bar_chart(top_sensitive.set_index("ISIN")["P/L Impact"])
+        st.bar_chart(top_sensitive.set_index("ISIN")["P/L Impact"].apply(lambda x: float(x.replace(",", "")) if x else 0))
 
         # ==================== AFFECTED ISINS ====================
         st.subheader("🔎 ISINs Affected by Yield Shock")
