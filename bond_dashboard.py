@@ -15,8 +15,8 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-    with st.spinner("Processing portfolio..."):
 
+    with st.spinner("Processing portfolio..."):
         # Load file
         if uploaded_file.name.endswith(".csv"):
             df_raw = pd.read_csv(uploaded_file)
@@ -32,8 +32,6 @@ if uploaded_file is not None:
             "maturity value": "Maturity Value",
             "ytm": "YTM"
         }
-
-        # Clean headers
         df_raw.columns = [str(col).strip().lower() for col in df_raw.columns]
         df_raw.rename(columns=canonical_columns, inplace=True)
         existing_cols = [v for v in canonical_columns.values() if v in df_raw.columns]
@@ -57,6 +55,22 @@ if uploaded_file is not None:
         spot_date = pd.to_datetime(spot_date)
         df["Years to Maturity"] = (df["Maturity Date"] - spot_date).dt.days / 365
         df = df[df["Years to Maturity"] > 0]
+
+        # ==================== ISIN FILTER ====================
+        st.sidebar.markdown("**Filter by ISIN**")
+        isin_options = df["ISIN"].unique().tolist()
+        selected_isins = st.sidebar.multiselect("Select ISINs to view", isin_options, default=isin_options)
+        df = df[df["ISIN"].isin(selected_isins)]
+
+        # ==================== TABS FOR ORGANIZATION ====================
+        tab1, tab2, tab3 = st.tabs(["Portfolio", "Risk Metrics", "Visualizations"])
+
+        with tab1:
+            st.subheader("📘 Full Portfolio Table")
+            st.dataframe(df, use_container_width=True)
+            st.markdown("ℹ️ **Portfolio Table:** Shows all bonds in your portfolio. Use sidebar to filter by ISIN.")
+
+        # The rest of your calculations and visualizations should be placed inside tab2 and tab3 as shown in the previous message.
 
         # ==================== BOND PRICING FUNCTIONS ====================
         def bond_price(face, coupon_rate, ytm, years, freq=2):
