@@ -1,6 +1,6 @@
 import streamlit as st
 import io
-#import pdfplumber
+import pdfplumber
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -14,8 +14,8 @@ st.title("🏦 Treasury Bond Risk & Yield Shock Engine")
 
 # Allow PDF, Excel, or CSV upload
 uploaded_file = st.file_uploader(
-    "Upload Bond Portfolio File (Excel, CSV)", 
-    type=["xlsx", "csv"]
+    "Upload Bond Portfolio File (Excel, CSV, or PDF)", 
+    type=["xlsx", "csv", "pdf"]
 )
 
 if uploaded_file is not None:
@@ -26,8 +26,8 @@ if uploaded_file is not None:
         if uploaded_file.name.endswith(".csv"):
             df_raw = pd.read_csv(uploaded_file)
         elif uploaded_file.name.endswith(".xlsx"):
-            #df_raw = pd.read_excel(uploaded_file)
-        #elif uploaded_file.name.endswith(".pdf"):
+            df_raw = pd.read_excel(uploaded_file)
+        elif uploaded_file.name.endswith(".pdf"):
             # Extract tables from PDF using pdfplumber
             with pdfplumber.open(io.BytesIO(uploaded_file.read())) as pdf:
                 tables = []
