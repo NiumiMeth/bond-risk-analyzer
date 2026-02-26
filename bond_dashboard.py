@@ -1,4 +1,6 @@
 import streamlit as st
+import io
+import pdfplumber
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -9,19 +11,47 @@ st.set_page_config(layout="wide", page_title="Treasury Bond Risk Dashboard")
 st.title("🏦 Treasury Bond Risk & Yield Shock Engine")
 
 # ==================== FILE UPLOAD ====================
+
+# Allow PDF, Excel, or CSV upload
 uploaded_file = st.file_uploader(
-    "Upload Bond Portfolio File (Excel or CSV)", 
-    type=["xlsx", "csv"]
+    "Upload Bond Portfolio File (Excel, CSV, or PDF)", 
+    type=["xlsx", "csv", "pdf"]
 )
 
 if uploaded_file is not None:
+
 
     with st.spinner("Processing portfolio..."):
         # Load file
         if uploaded_file.name.endswith(".csv"):
             df_raw = pd.read_csv(uploaded_file)
-        else:
+        elif uploaded_file.name.endswith(".xlsx"):
             df_raw = pd.read_excel(uploaded_file)
+        elif uploaded_file.name.endswith(".pdf"):
+            # Extract tables from PDF using pdfplumber
+            with pdfplumber.open(io.BytesIO(uploaded_file.read())) as pdf:
+                tables = []
+                for page in pdf.pages:
+                    page_tables = page.extract_tables()
+                    for table in page_tables:
+                        tables.append(pd.DataFrame(table[1:], columns=table[0]))
+            if tables:
+                # Concatenate all tables found in the PDF
+                df_pdf = pd.concat(tables, ignore_index=True)
+                # Only keep relevant columns for the dashboard
+                required_cols = [
+                    "ISIN", "Initial Inv Date", "Maturity Date", "Coupon", "Maturity Value", "YTM"
+                ]
+                # Try to match columns case-insensitively
+                df_pdf.columns = [str(col).strip() for col in df_pdf.columns]
+                col_map = {col.lower(): col for col in df_pdf.columns}
+                selected_cols = [col_map[c.lower()] for c in required_cols if c.lower() in col_map]
+                df_raw = df_pdf[selected_cols].copy()
+                # Rename columns to canonical names
+                df_raw.rename(columns={col_map[c.lower()]: c for c in required_cols if c.lower() in col_map}, inplace=True)
+            else:
+                st.error("No tables found in the uploaded PDF. Please upload a file with tabular bond data.")
+                st.stop()
 
         # COLUMN MAPPING
         canonical_columns = {
