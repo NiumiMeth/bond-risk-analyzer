@@ -1,6 +1,4 @@
 import streamlit as st
-import io
-import pdfplumber
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -12,10 +10,10 @@ st.title("🏦 Treasury Bond Risk & Yield Shock Engine")
 
 # ==================== FILE UPLOAD ====================
 
-# Allow PDF, Excel, or CSV upload
+# Allow Excel or CSV upload
 uploaded_file = st.file_uploader(
-    "Upload Bond Portfolio File (Excel, CSV, or PDF)", 
-    type=["xlsx", "csv", "pdf"]
+    "Upload Bond Portfolio File (Excel or CSV)", 
+    type=["xlsx", "csv"]
 )
 
 if uploaded_file is not None:
@@ -27,31 +25,9 @@ if uploaded_file is not None:
             df_raw = pd.read_csv(uploaded_file)
         elif uploaded_file.name.endswith(".xlsx"):
             df_raw = pd.read_excel(uploaded_file)
-        elif uploaded_file.name.endswith(".pdf"):
-            # Extract tables from PDF using pdfplumber
-            with pdfplumber.open(io.BytesIO(uploaded_file.read())) as pdf:
-                tables = []
-                for page in pdf.pages:
-                    page_tables = page.extract_tables()
-                    for table in page_tables:
-                        tables.append(pd.DataFrame(table[1:], columns=table[0]))
-            if tables:
-                # Concatenate all tables found in the PDF
-                df_pdf = pd.concat(tables, ignore_index=True)
-                # Only keep relevant columns for the dashboard
-                required_cols = [
-                    "ISIN", "Initial Inv Date", "Maturity Date", "Coupon", "Maturity Value", "YTM"
-                ]
-                # Try to match columns case-insensitively
-                df_pdf.columns = [str(col).strip() for col in df_pdf.columns]
-                col_map = {col.lower(): col for col in df_pdf.columns}
-                selected_cols = [col_map[c.lower()] for c in required_cols if c.lower() in col_map]
-                df_raw = df_pdf[selected_cols].copy()
-                # Rename columns to canonical names
-                df_raw.rename(columns={col_map[c.lower()]: c for c in required_cols if c.lower() in col_map}, inplace=True)
-            else:
-                st.error("No tables found in the uploaded PDF. Please upload a file with tabular bond data.")
-                st.stop()
+        else:
+            st.error("Unsupported file type. Please upload an Excel or CSV file.")
+            st.stop()
 
         # COLUMN MAPPING
         canonical_columns = {
@@ -135,6 +111,40 @@ if uploaded_file is not None:
         df["Convexity"] = df.apply(lambda row: convexity(row["Maturity Value"], row["Coupon"], row["YTM"], row["Years to Maturity"]), axis=1)
         df["DV01"] = df["Modified Duration"] * df["Market Value"] * 0.0001
 
+        # Per-ISIN summary table
+        def maturity_date_summary(date_series):
+            valid_dates = pd.to_datetime(date_series, errors="coerce").dropna()
+            if valid_dates.empty:
+                return ""
+            unique_dates = sorted(valid_dates.dt.strftime("%Y-%m-%d").unique().tolist())
+            if len(unique_dates) == 1:
+                return unique_dates[0]
+            return f"{unique_dates[0]} to {unique_dates[-1]}"
+
+        def render_isin_summary(dataframe, market_value_col):
+            isin_summary = (
+                dataframe.groupby("ISIN", as_index=False)
+                .agg(
+                    Maturity_Date=("Maturity Date", maturity_date_summary),
+                    Total_Maturity_Value=("Maturity Value", "sum"),
+                    Total_Market_Value=(market_value_col, "sum"),
+                )
+                .rename(
+                    columns={
+                        "Maturity_Date": "Maturity Date",
+                        "Total_Maturity_Value": "Total Maturity Value",
+                        "Total_Market_Value": "Total Market Value",
+                    }
+                )
+            )
+            st.subheader("📊 ISIN Summary (Separate ISIN Totals)")
+            isin_summary_display = isin_summary.copy()
+            for col in ["Total Maturity Value", "Total Market Value"]:
+                isin_summary_display[col] = isin_summary_display[col].apply(
+                    lambda x: f"{x:,.2f}" if pd.notnull(x) else ""
+                )
+            st.dataframe(isin_summary_display, use_container_width=True)
+
         if page == "Total Yield Shock":
             # ==================== YIELD SHOCK ====================
             st.subheader("Total (Parallel) Yield Shock Analysis")
@@ -150,7 +160,8 @@ if uploaded_file is not None:
             total_pl = df["P/L Impact"].sum()
             df["% Contribution to P/L"] = df["P/L Impact"] / total_pl * 100 if total_pl != 0 else 0
 
-            # ...existing code...
+            render_isin_summary(df, "New Price")
+
 
             # Portfolio Metrics
             total_mv = df["Market Value"].sum()
@@ -241,12 +252,14 @@ if uploaded_file is not None:
             df["ISIN_Specific_Price Change"] = df["ISIN_Specific_Price"] - df["Price"]
             df["ISIN_Specific_P/L Impact"] = df["ISIN_Specific_Price Change"]
             df["ISIN_Specific_Maturity Date"] = df["Maturity Date"]
-            df["ISIN_Specific_Market Value"] = df["Market Value"]
+            df["ISIN_Specific_Market Value"] = df["ISIN_Specific_Price"]
             df["ISIN_Specific_Modified Duration"] = df["Modified Duration"]
             df["ISIN_Specific_DV01"] = df["DV01"]
             total_pl = df["ISIN_Specific_P/L Impact"].sum()
             df["ISIN_Specific_% Contribution to P/L"] = df["ISIN_Specific_P/L Impact"] / total_pl * 100 if total_pl != 0 else 0
             df["ISIN_Specific_Duration Approx P/L"] = -df["ISIN_Specific_Modified Duration"] * df["ISIN_Specific_Market Value"] * 0.0001
+
+            render_isin_summary(df, "ISIN_Specific_Market Value")
 
             # ...existing code...
 
