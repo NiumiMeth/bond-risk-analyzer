@@ -657,7 +657,7 @@ def to_excel_bytes(
 
 
 def main() -> None:
-    st.title("Bond Portfolio Pricing (Semi-Annual)")
+    st.title("Bond Portfolio Pricing")
     st.caption(
         "Upload CSV/Excel, calculate semi-annual PVs automatically, and view book value by ISIN."
     )
