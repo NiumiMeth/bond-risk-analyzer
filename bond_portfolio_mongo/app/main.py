@@ -62,20 +62,40 @@ class UserOut(BaseModel):
 	full_name: str
 	email: str
 
+
+# Expanded Holding model for detailed analytics
 class Holding(BaseModel):
 	isin: str
 	bond_name: str
 	face_value: float
 	coupon_rate: float
 	coupon_frequency: int
+	purchase_date: str
 	maturity_date: str
-	clean_price: float
-	ytm: float
-	macaulay_duration: float
-	modified_duration: float
-	convexity: float
-	market_value: float
-	unrealized_gain_loss: float
+	purchase_clean_price: float
+	purchase_accrued_interest: float
+	purchase_dirty_price: float
+	purchase_full_price: float
+	purchase_ytm: float
+	sale_date: Optional[str] = None
+	sale_clean_price: Optional[float] = None
+	sale_accrued_interest: Optional[float] = None
+	sale_dirty_price: Optional[float] = None
+	sale_full_price: Optional[float] = None
+	sale_ytm: Optional[float] = None
+	funding_rate: Optional[float] = None
+	funding_cost: Optional[float] = None
+	coupons_received: Optional[float] = None
+	holding_period_days: Optional[int] = None
+	net_profit_loss: Optional[float] = None
+	next_coupon_date: Optional[str] = None
+	all_coupon_dates: Optional[List[str]] = None
+	all_coupon_amounts: Optional[List[float]] = None
+	macaulay_duration: Optional[float] = None
+	modified_duration: Optional[float] = None
+	convexity: Optional[float] = None
+	market_value: Optional[float] = None
+	unrealized_gain_loss: Optional[float] = None
 
 class Portfolio(BaseModel):
 	user_id: str
