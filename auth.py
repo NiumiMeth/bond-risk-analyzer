@@ -185,7 +185,7 @@ def _login_page() -> tuple[str | None, str | None]:
         username = st.text_input("Username", value=remembered_user, placeholder="Enter your username")
         password = st.text_input("Password", type="password", placeholder="••••••••••")
         remember = st.checkbox("Keep me signed in", value=bool(remembered_user))
-        submitted = st.form_submit_button("Sign In →")
+        submitted = st.form_submit_button("Sign In ->")
 
         if submitted:
             if not username or not password:
