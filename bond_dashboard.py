@@ -135,7 +135,7 @@ html, body, [class*="css"] {
 }
 .kpi-value {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 1.4rem;
+    font-size: 1.25rem;
     font-weight: 500;
     color: #F1F5F9;
     letter-spacing: -0.02em;
