@@ -276,6 +276,27 @@ section[data-testid="stSidebar"] {
 </style>
 """, unsafe_allow_html=True)
 
+# Mobile-specific fixes: avoid characters stacking and make KPI cards responsive
+st.markdown("""
+<style>
+@media (max-width: 700px) {
+    .kpi-grid { grid-template-columns: 1fr !important; }
+    .kpi-card { padding: 0.9rem !important; }
+    .kpi-value { font-size: 1.4rem !important; word-break: normal !important; }
+}
+
+[data-testid="stDataFrameContainer"] table {
+    table-layout: auto !important;
+}
+[data-testid="stDataFrameContainer"] td, [data-testid="stDataFrameContainer"] th {
+    white-space: nowrap !important;
+    word-break: normal !important;
+    letter-spacing: normal !important;
+}
+.stDataFrame { overflow-x: auto !important; }
+</style>
+""", unsafe_allow_html=True)
+
 EXPECTED_COLUMNS = [
     "Port. Index", "Instrument", "Deal No.", "ISIN",
     "Initial Inv Date", "Maturity Date", "Coupon",
